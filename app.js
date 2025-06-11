@@ -5,9 +5,11 @@ let customPointsData = {
     type: "FeatureCollection",
     features: []
 };
+let lastFetchTime = 0;
+const FETCH_COOLDOWN = 300000; // 5 minutes in milliseconds
 
-async function fetchPointData() {
-    const dataUrl = 'https://raw.githubusercontent.com/SchroderHill/point_data_RFM/main/points_geojson.geojson';
+async function fetchPointData(forceRefresh = false) {
+    const dataUrl = 'https://schroderhill.github.io/point_data_RFM/points_geojson.geojson';
     try {
         const response = await fetch(dataUrl);
         if (!response.ok) {
@@ -15,19 +17,20 @@ async function fetchPointData() {
         }
         const data = await response.json();
         nextFeatureId = Math.max(...data.features.map(f => f.properties.id)) + 1;
+        
+        // Store fetch timestamp
+        lastFetchTime = Date.now();
+        localStorage.setItem('lastFetchTime', lastFetchTime.toString());
+        
+        // Store the original data separately
+        localStorage.setItem('originalPointsData', JSON.stringify(data));
+        
         return data;
     } catch (error) {
         console.error('Error fetching point data:', error);
         showToast('Error loading points data');
         return {
             type: "FeatureCollection",
-            name: "points_geojson",
-            crs: { 
-                type: "name", 
-                properties: { 
-                    name: "urn:ogc:def:crs:OGC:1.3:CRS84" 
-                } 
-            },
             features: []
         };
     }
@@ -275,10 +278,17 @@ spinGlobe();
 map.on('load', async () => {
     try {
         const savedData = localStorage.getItem('customPointsData');
-        if (savedData) {
-            customPointsData = JSON.parse(savedData);
-        } else {
+        const savedTime = parseInt(localStorage.getItem('lastFetchTime') || '0');
+        const timeSinceLastFetch = Date.now() - savedTime;
+
+        // Fetch new data if:
+        // 1. No saved data exists, or
+        // 2. It's been longer than FETCH_COOLDOWN since last fetch
+        if (!savedData || timeSinceLastFetch > FETCH_COOLDOWN) {
             customPointsData = await fetchPointData();
+        } else {
+            // Use saved data
+            customPointsData = JSON.parse(savedData);
         }
     } catch (error) {
         console.error('Error initializing data:', error);
@@ -502,4 +512,30 @@ map.on('load', async () => {
 /********** Dashboard Button Event Listener **********/
 document.getElementById('btn-dashboard').addEventListener('click', () => {
   window.open('rainfullniwa_data.html', '_blank');
+});
+
+// Add a force refresh button
+const refreshButton = document.createElement('button');
+refreshButton.id = 'btn-refresh';
+refreshButton.className = 'small-button';
+refreshButton.title = 'Force Refresh Points';
+refreshButton.innerHTML = `
+  <svg viewBox="0 0 24 24" width="20" height="20">
+    <path fill="#f9f9f9" d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+  </svg>
+`;
+document.querySelector('.top-right-buttons').appendChild(refreshButton);
+
+// Add refresh button event listener
+refreshButton.addEventListener('click', async () => {
+    try {
+        // Force fetch new data
+        customPointsData = await fetchPointData(true);
+        // Update the map source
+        map.getSource('custom-points').setData(customPointsData);
+        showToast('Points refreshed from GitHub');
+    } catch (error) {
+        console.error('Error refreshing points:', error);
+        showToast('Error refreshing points');
+    }
 });
