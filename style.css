@@ -1,0 +1,87 @@
+/* Basic page setup */
+body { margin: 0; padding: 0; }
+#map { position: absolute; top: 0; bottom: 0; width: 100%; }
+
+/* Top right button container */
+.top-right-buttons {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Top center dropdown styling */
+.top-center-dropdown {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+}
+
+.top-center-dropdown select {
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+/* Small round button styling */
+.small-button {
+  background-color: #6c0344;
+  color: #f9f9f9;
+  border: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s ease;
+}
+.small-button:hover {
+  background-color: #640452;
+}
+
+/* Toast styling */
+.toast-message {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 4px;
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity 0.4s ease-in-out;
+  z-index: 9999;
+}
+.toast-show {
+  opacity: 1;
+}
+
+/* Fade-out class for popup content */
+.fade-out {
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+/* Custom popup styling */
+.mapboxgl-popup-content {
+  background-color: #333 !important; 
+  color: #fff !important;
+  border-radius: 8px;
+  padding: 10px;
+}
+.mapboxgl-popup-tip {
+  border-top-color: #333 !important;
+}
+.mapboxgl-popup-close-button {
+  color: #fff !important;
+}
