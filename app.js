@@ -281,233 +281,84 @@ map.on('load', async () => {
         const savedTime = parseInt(localStorage.getItem('lastFetchTime') || '0');
         const timeSinceLastFetch = Date.now() - savedTime;
 
-        // Fetch new data if:
-        // 1. No saved data exists, or
-        // 2. It's been longer than FETCH_COOLDOWN since last fetch
         if (!savedData || timeSinceLastFetch > FETCH_COOLDOWN) {
             customPointsData = await fetchPointData();
         } else {
-            // Use saved data
             customPointsData = JSON.parse(savedData);
         }
+
+        map.addSource('custom-points', {
+            type: 'geojson',
+            data: customPointsData
+        });
+  
+        map.addLayer({
+            id: 'points-layer',
+            type: 'circle',
+            source: 'custom-points',
+            paint: {
+                'circle-radius': [
+                    'case',
+                    ['boolean', ['feature-state', 'watched'], false],
+                    ['coalesce', ['feature-state', 'pulse'], 6],
+                    6
+                ],
+                'circle-color': [
+                    'match',
+                    ['get', 'priority'],
+                    'high', '#FF0000',
+                    'medium', '#FFA500',
+                    'low', '#008000',
+                    'custom', '#00FFFF',
+                    '#000000'
+                ],
+                'circle-opacity': [
+                    'case',
+                    ['boolean', ['feature-state', 'archived'], false],
+                    0.3,  // When archived, set opacity to 0.3
+                    1     // Otherwise, full opacity
+                ],
+                'circle-stroke-color': [
+                    'case',
+                    ['boolean', ['feature-state', 'remediated'], false], '#00FF00',
+                    ['boolean', ['feature-state', 'watched'], false], '#FFFFFF',
+                    'transparent'
+                ],
+                'circle-stroke-width': [
+                    'case',
+                    ['boolean', ['feature-state', 'remediated'], false], 2,
+                    ['boolean', ['feature-state', 'watched'], false], 2,
+                    0
+                ]
+            }
+        });
+  
+        // Set feature states for all points
+        setFeatureStates(customPointsData.features);
+
     } catch (error) {
         console.error('Error initializing data:', error);
         showToast('Error loading point data');
     }
-
-    map.addSource('custom-points', {
-        type: 'geojson',
-        data: customPointsData
-    });
-  
-    map.addLayer({
-        id: 'points-layer',
-        type: 'circle',
-        source: 'custom-points',
-        paint: {
-            'circle-radius': [
-                'case',
-                ['boolean', ['feature-state', 'watched'], false],
-                ['coalesce', ['feature-state', 'pulse'], 6],
-                6
-            ],
-            'circle-color': [
-                'match',
-                ['get', 'priority'],
-                'high', '#FF0000',
-                'medium', '#FFA500',
-                'low', '#008000',
-                'custom', '#00FFFF',
-                '#000000'
-            ],
-            'circle-opacity': [
-                'case',
-                ['boolean', ['feature-state', 'archived'], false],
-                0.3,
-                1
-            ],
-            'circle-stroke-color': [
-                'case',
-                ['boolean', ['feature-state', 'remediated'], false], '#00FF00',
-                ['boolean', ['feature-state', 'watched'], false], '#FFFFFF',
-                'transparent'
-            ],
-            'circle-stroke-width': [
-                'case',
-                ['boolean', ['feature-state', 'remediated'], false], 2,
-                ['boolean', ['feature-state', 'watched'], false], 2,
-                0
-            ]
-        }
-    });
-  
-    customPointsData.features.forEach(feature => {
-        map.setFeatureState({ source: 'custom-points', id: feature.properties.id }, {
-            archived: feature.properties.archived || false,
-            watched: feature.properties.watched || false,
-            remediated: feature.properties.remediated || false,
-            pulse: 6,
-            notes: feature.properties.notes || ""
-        });
-    });
-  
-    /********** Enable Adding New Points **********/
-    map.on('click', (e) => {
-        const features = map.queryRenderedFeatures(e.point, { layers: ['points-layer'] });
-        if (addPointMode && features.length === 0) {
-            const newFeature = {
-                type: 'Feature',
-                id: nextFeatureId,
-                properties: { id: nextFeatureId, priority: 'custom' },
-                geometry: { type: 'Point', coordinates: [e.lngLat.lng, e.lngLat.lat] }
-            };
-            customPointsData.features.push(newFeature);
-            map.getSource('custom-points').setData(customPointsData);
-            nextFeatureId++;
-            addPointMode = false;
-            document.getElementById('btn-add').innerHTML = `
-              <svg viewBox="0 0 24 24" width="20" height="20">
-                <path fill="#f9f9f9" d="M19,13H5V11H19V13Z" />
-              </svg>
-            `;
-            showToast("New point added. Click the point to set Watch/Archive/Remediated.");
-        }
-    });
-  
-    /********** Interactivity for Existing Points **********/
-    map.on('click', 'points-layer', (e) => {
-        // If in Add Point Mode, ignore clicks on existing points
-        if (addPointMode) return;
-  
-        const feature = e.features[0];
-        const id = feature.properties.id;
-        const priority = feature.properties.priority;
-        const coordinates = feature.geometry.coordinates.slice();
-  
-        // Retrieve current feature state for pre-population
-        const featureState = map.getFeatureState({ source: 'custom-points', id: id });
-        const isWatched = featureState.watched || false;
-        const isArchived = featureState.archived || false;
-        const isRemediated = featureState.remediated || false;
-        const notesValue = featureState.notes || '';
-  
-        // Build the popup content without a delete button
-        const popupContent = document.createElement('div');
-        popupContent.innerHTML = `
-          <h3>Point ID: ${id}</h3>
-          <p>Priority: ${priority}</p>
-          <form>
-            <input type="radio" id="watch-${id}" name="action-${id}" value="watch" ${isWatched ? 'checked' : ''}>
-            <label for="watch-${id}">Watch</label>
-            <br>
-            <input type="radio" id="archive-${id}" name="action-${id}" value="archive" ${isArchived ? 'checked' : ''}>
-            <label for="archive-${id}">Archive</label>
-            <br>
-            <input type="radio" id="remediated-${id}" name="action-${id}" value="remediated" ${isRemediated ? 'checked' : ''}>
-            <label for="remediated-${id}">Remediated</label>
-            <br>
-            <label for="notes-${id}">Notes:</label>
-            <br>
-            <textarea id="notes-${id}" rows="3" cols="30">${notesValue}</textarea>
-            <br>
-            <button type="button" id="submitBtn-${id}">Submit</button>
-          </form>
-        `;
-  
-        // Create and add the popup to the map
-        const popup = new mapboxgl.Popup()
-          .setLngLat(coordinates)
-          .setDOMContent(popupContent)
-          .addTo(map);
-  
-        // Handle Submit
-        const submitButton = popupContent.querySelector(`#submitBtn-${id}`);
-        submitButton.addEventListener('click', () => {
-          const selectedRadio = popupContent.querySelector(`input[name="action-${id}"]:checked`);
-          if (!selectedRadio) {
-            showToast("Please select an action (Watch, Archive, or Remediated) before submitting.");
-            return;
-          }
-          const action = selectedRadio.value;
-          const notes = popupContent.querySelector(`#notes-${id}`).value;
-  
-          if (action === "archive") {
-            map.setFeatureState(
-              { source: 'custom-points', id: id },
-              { archived: true, watched: false, remediated: false, pulse: 6, notes: notes }
-            );
-          } else if (action === "watch") {
-            map.setFeatureState(
-              { source: 'custom-points', id: id },
-              { archived: false, watched: true, remediated: false, pulse: 6, notes: notes }
-            );
-            let startTime = performance.now();
-            function animatePulse(timestamp) {
-              let elapsed = timestamp - startTime;
-              let pulse = 6 + 2 * Math.abs(Math.sin(elapsed / 200));
-              map.setFeatureState({ source: 'custom-points', id: id }, { pulse: pulse });
-              if (elapsed < 2000) {
-                requestAnimationFrame(animatePulse);
-              } else {
-                map.setFeatureState({ source: 'custom-points', id: id }, { pulse: 6 });
-              }
-            }
-            requestAnimationFrame(animatePulse);
-          } else if (action === "remediated") {
-            map.setFeatureState(
-              { source: 'custom-points', id: id },
-              { archived: false, watched: false, remediated: true, pulse: 6, notes: notes }
-            );
-          } 
-          popupContent.classList.add('fade-out');
-          setTimeout(() => {
-            popup.remove();
-          }, 500);
-          showToast("Point updated");
-        });
-    });
-  
-    /********** Tooltip Functionality for Hovering Points **********/
-    const tooltip = document.createElement('div');
-    tooltip.style.position = 'absolute';
-    tooltip.style.padding = '5px 10px';
-    tooltip.style.background = 'rgba(0, 0, 0, 0.7)';
-    tooltip.style.color = '#fff';
-    tooltip.style.borderRadius = '4px';
-    tooltip.style.fontSize = '12px';
-    tooltip.style.pointerEvents = 'none';
-    tooltip.style.zIndex = '10000';
-    tooltip.style.display = 'none';
-    document.body.appendChild(tooltip);
-  
-    map.on('mouseenter', 'points-layer', (e) => {
-      map.getCanvas().style.cursor = 'pointer';
-      const feature = e.features[0];
-      const state = map.getFeatureState({ source: 'custom-points', id: feature.properties.id });
-      let statusText = 'Status: ';
-      if (state.archived) {
-        statusText += 'Archived';
-      } else if (state.watched) {
-        statusText += 'Watched';
-      } else if (state.remediated) {
-        statusText += 'Remediated';
-      } else {
-        statusText += 'None';
-      }
-      tooltip.innerHTML = statusText;
-      tooltip.style.display = 'block';
-    });
-  
-    map.on('mousemove', 'points-layer', (e) => {
-      tooltip.style.left = e.originalEvent.clientX + 10 + 'px';
-      tooltip.style.top = e.originalEvent.clientY + 10 + 'px';
-    });
-  
-    map.on('mouseleave', 'points-layer', () => {
-      map.getCanvas().style.cursor = '';
-      tooltip.style.display = 'none';
-    });
+    
+    // ...rest of your existing map.on('load') code...
 });
+
+// Add this helper function
+function setFeatureStates(features) {
+    features.forEach(feature => {
+        map.setFeatureState(
+            { source: 'custom-points', id: feature.properties.id },
+            {
+                archived: feature.properties.archived || false,
+                watched: feature.properties.watched || false,
+                remediated: feature.properties.remediated || false,
+                pulse: 6,
+                notes: feature.properties.notes || ""
+            }
+        );
+    });
+}
 
 /********** Dashboard Button Event Listener **********/
 document.getElementById('btn-dashboard').addEventListener('click', () => {
@@ -533,6 +384,8 @@ refreshButton.addEventListener('click', async () => {
         customPointsData = await fetchPointData(true);
         // Update the map source
         map.getSource('custom-points').setData(customPointsData);
+        // Set feature states for all points
+        setFeatureStates(customPointsData.features);
         showToast('Points refreshed from GitHub');
     } catch (error) {
         console.error('Error refreshing points:', error);
