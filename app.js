@@ -16,14 +16,23 @@ async function fetchPointData(forceRefresh = false) {
             throw new Error('Network response was not ok');
         }
         const data = await response.json();
-        nextFeatureId = Math.max(...data.features.map(f => f.properties.id)) + 1;
         
-        // Store fetch timestamp
+        // Ensure each feature has the required properties
+        data.features = data.features.map(feature => ({
+            ...feature,
+            properties: {
+                ...feature.properties,
+                archived: false,
+                watched: false,
+                remediated: false,
+                notes: "",
+                id: feature.properties.id || nextFeatureId++
+            }
+        }));
+
+        nextFeatureId = Math.max(...data.features.map(f => f.properties.id)) + 1;
         lastFetchTime = Date.now();
         localStorage.setItem('lastFetchTime', lastFetchTime.toString());
-        
-        // Store the original data separately
-        localStorage.setItem('originalPointsData', JSON.stringify(data));
         
         return data;
     } catch (error) {
@@ -382,13 +391,169 @@ refreshButton.addEventListener('click', async () => {
     try {
         // Force fetch new data
         customPointsData = await fetchPointData(true);
-        // Update the map source
-        map.getSource('custom-points').setData(customPointsData);
-        // Set feature states for all points
-        setFeatureStates(customPointsData.features);
+        
+        // First remove existing source and layer
+        if (map.getLayer('points-layer')) {
+            map.removeLayer('points-layer');
+        }
+        if (map.getSource('custom-points')) {
+            map.removeSource('custom-points');
+        }
+        
+        // Add source and layer again
+        map.addSource('custom-points', {
+            type: 'geojson',
+            data: customPointsData
+        });
+
+        map.addLayer({
+            id: 'points-layer',
+            type: 'circle',
+            source: 'custom-points',
+            paint: {
+                'circle-radius': [
+                    'case',
+                    ['boolean', ['feature-state', 'watched'], false],
+                    ['coalesce', ['feature-state', 'pulse'], 6],
+                    6
+                ],
+                'circle-color': [
+                    'match',
+                    ['get', 'priority'],
+                    'high', '#FF0000',
+                    'medium', '#FFA500',
+                    'low', '#008000',
+                    'custom', '#00FFFF',
+                    '#000000'
+                ],
+                'circle-opacity': [
+                    'case',
+                    ['boolean', ['feature-state', 'archived'], false],
+                    0.3,  // When archived, set opacity to 0.3
+                    1     // Otherwise, full opacity
+                ],
+                'circle-stroke-color': [
+                    'case',
+                    ['boolean', ['feature-state', 'remediated'], false], '#00FF00',
+                    ['boolean', ['feature-state', 'watched'], false], '#FFFFFF',
+                    'transparent'
+                ],
+                'circle-stroke-width': [
+                    'case',
+                    ['boolean', ['feature-state', 'remediated'], false], 2,
+                    ['boolean', ['feature-state', 'watched'], false], 2,
+                    0
+                ]
+            }
+        });
+
+        // Set feature states after layer is added
+        customPointsData.features.forEach(feature => {
+            map.setFeatureState(
+                { source: 'custom-points', id: feature.properties.id },
+                {
+                    archived: feature.properties.archived || false,
+                    watched: feature.properties.watched || false,
+                    remediated: feature.properties.remediated || false,
+                    pulse: 6,
+                    notes: feature.properties.notes || ""
+                }
+            );
+        });
+
         showToast('Points refreshed from GitHub');
     } catch (error) {
         console.error('Error refreshing points:', error);
         showToast('Error refreshing points');
     }
+});
+
+// Add after the map initialization but before the map.on('load') event
+map.on('click', 'points-layer', (e) => {
+    if (addPointMode) return; // Don't show popup in add point mode
+    
+    const coordinates = e.features[0].geometry.coordinates.slice();
+    const id = e.features[0].properties.id;
+    const priority = e.features[0].properties.priority;
+    const state = map.getFeatureState({ source: 'custom-points', id: id });
+    
+    // Create popup content with toggle buttons and notes
+    const popupContent = document.createElement('div');
+    popupContent.className = 'popup-content';
+    popupContent.innerHTML = `
+        <h4>Point ${id} (${priority})</h4>
+        <div class="toggle-buttons">
+            <button class="${state.watched ? 'active' : ''}" data-action="watch">
+                Watch
+            </button>
+            <button class="${state.archived ? 'active' : ''}" data-action="archive">
+                Archive
+            </button>
+            <button class="${state.remediated ? 'active' : ''}" data-action="remediate">
+                Remediate
+            </button>
+        </div>
+        <textarea placeholder="Add notes..." rows="3">${state.notes || ''}</textarea>
+        <button class="submit-btn">Submit</button>
+    `;
+
+    // Event listeners for toggle buttons
+    const buttons = popupContent.querySelectorAll('.toggle-buttons button');
+    buttons.forEach(button => {
+        button.addEventListener('click', () => {
+            const action = button.dataset.action;
+            button.classList.toggle('active');
+            
+            // Update other buttons based on selection
+            if (button.classList.contains('active')) {
+                buttons.forEach(btn => {
+                    if (btn !== button) btn.classList.remove('active');
+                });
+            }
+        });
+    });
+
+    // Submit button event listener
+    const submitBtn = popupContent.querySelector('.submit-btn');
+    submitBtn.addEventListener('click', () => {
+        const notes = popupContent.querySelector('textarea').value;
+        const watchBtn = popupContent.querySelector('[data-action="watch"]');
+        const archiveBtn = popupContent.querySelector('[data-action="archive"]');
+        const remediateBtn = popupContent.querySelector('[data-action="remediate"]');
+
+        // Update feature state
+        map.setFeatureState(
+            { source: 'custom-points', id: id },
+            {
+                watched: watchBtn.classList.contains('active'),
+                archived: archiveBtn.classList.contains('active'),
+                remediated: remediateBtn.classList.contains('active'),
+                notes: notes,
+                pulse: 6
+            }
+        );
+
+        // Close popup with fade effect
+        popupContent.classList.add('fade-out');
+        setTimeout(() => popup.remove(), 500);
+    });
+
+    // Create and display popup
+    const popup = new mapboxgl.Popup({
+        closeButton: true,
+        closeOnClick: false,
+        maxWidth: '300px'
+    })
+    .setLngLat(coordinates)
+    .setDOMContent(popupContent)
+    .addTo(map);
+});
+
+// Add hover effect on points
+map.on('mouseenter', 'points-layer', () => {
+    map.getCanvas().style.cursor = 'pointer';
+});
+
+map.on('mouseleave', 'points-layer', () => {
+    map.getCanvas().style.cursor = '';
 });
