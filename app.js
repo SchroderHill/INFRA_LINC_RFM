@@ -17,18 +17,23 @@ async function fetchPointData(forceRefresh = false) {
         }
         const data = await response.json();
         
-        // Ensure each feature has the required properties
-        data.features = data.features.map(feature => ({
-            ...feature,
-            properties: {
-                ...feature.properties,
-                archived: false,
-                watched: false,
-                remediated: false,
-                notes: "",
-                id: feature.properties.id || nextFeatureId++
-            }
-        }));
+        // Ensure each feature has the required properties *and* a root-level id
+data.features = data.features.map(feature => {
+  const rootId = feature.id ?? feature.properties.id ?? nextFeatureId++;
+  return {
+    ...feature,
+    id: rootId,                         //  ← NEW  (root-level)
+    properties: {
+      ...feature.properties,
+      id: rootId,                       //  (keep a copy in properties—handy for pop-ups)
+      archived: false,
+      watched: false,
+      remediated: false,
+      notes: ""
+    }
+  };
+});
+    
 
         nextFeatureId = Math.max(...data.features.map(f => f.properties.id)) + 1;
         lastFetchTime = Date.now();
@@ -403,7 +408,8 @@ refreshButton.addEventListener('click', async () => {
         // Add source and layer again
         map.addSource('custom-points', {
             type: 'geojson',
-            data: customPointsData
+            data: customPointsData,
+            promoteId: 'id' // Ensure 'id' is promoted for feature states
         });
 
         map.addLayer({
