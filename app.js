@@ -562,4 +562,43 @@ map.on('mouseenter', 'points-layer', () => {
 
 map.on('mouseleave', 'points-layer', () => {
     map.getCanvas().style.cursor = '';
+});// ADD THIS *after* the 'points-layer' is added, but before your popup code
+map.on('click', (e) => {
+  if (!addPointMode) return;            // Only fire in add-point mode
+  const coords = [e.lngLat.lng, e.lngLat.lat];
+
+  // Build a new feature skeleton
+  const newId = nextFeatureId++;
+  const newFeature = {
+    type: 'Feature',
+    id: newId,                          // promoteId relies on this
+    geometry: { type: 'Point', coordinates: coords },
+    properties: {
+      id: newId,
+      priority: 'custom',               // or ask the user later
+      archived: false,
+      watched: false,
+      remediated: false,
+      notes: ''
+    }
+  };
+
+  // Push to in-memory store and refresh the source
+  customPointsData.features.push(newFeature);
+  map.getSource('custom-points').setData(customPointsData);
+
+  // Set default feature-state (for stroke colours etc.)
+  map.setFeatureState(
+    { source: 'custom-points', id: newId },
+    { archived: false, watched: false, remediated: false, pulse: 6, notes: '' }
+  );
+
+  // Optional: switch back to normal mode and reset icon
+  addPointMode = false;
+  document.getElementById('btn-add').innerHTML = `
+    <svg viewBox="0 0 24 24" width="20" height="20">
+      <path fill="#f9f9f9" d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/>
+    </svg>`;
+  showToast(`Point ${newId} added`);
 });
+
