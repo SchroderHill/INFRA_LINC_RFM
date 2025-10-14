@@ -7,6 +7,129 @@ let customPointsData = {
 };
 let lastFetchTime = 0;
 const FETCH_COOLDOWN = 300000; // 5 minutes in milliseconds
+const DISPLACEMENT_SERIES = {
+  high: {
+    labels: ['2024-Jan', '2024-Feb', '2024-Mar', '2024-Apr', '2024-May', '2024-Jul', '2024-Sep', '2024-Oct', '2024-Nov'],
+    data: [1.8, 0.2, -2.4, -3.9, -5.1, -6.2, -7.5, -8.4, -9.8]
+  },
+  medium: {
+    labels: ['2024-Jan', '2024-Feb', '2024-Mar', '2024-Apr', '2024-May', '2024-Jul', '2024-Sep', '2024-Oct', '2024-Nov'],
+    data: [1.2, 0.4, -0.9, -2.2, -3.1, -3.8, -4.5, -5.3, -6.0]
+  },
+  low: {
+    labels: ['2024-Jan', '2024-Feb', '2024-Mar', '2024-Apr', '2024-May', '2024-Jul', '2024-Sep', '2024-Oct', '2024-Nov'],
+    data: [0.9, 0.6, 0.1, -0.2, -0.4, -0.7, -0.9, -1.1, -1.3]
+  },
+  custom: {
+    labels: ['2024-Jan', '2024-Feb', '2024-Mar', '2024-Apr', '2024-May', '2024-Jul', '2024-Sep', '2024-Oct', '2024-Nov'],
+    data: [1.0, -0.1, -1.3, -2.1, -3.2, -3.9, -4.8, -5.6, -6.4]
+  },
+  default: {
+    labels: ['2024-Jan', '2024-Feb', '2024-Mar', '2024-Apr', '2024-May', '2024-Jul', '2024-Sep', '2024-Oct', '2024-Nov'],
+    data: [1.4, 0.3, -1.4, -2.6, -3.7, -4.3, -5.2, -6.3, -7.1]
+  }
+};
+
+function getDisplacementSeries(priority, pointId) {
+  const baseline = DISPLACEMENT_SERIES[priority] || DISPLACEMENT_SERIES.default;
+  const seed = Number(pointId);
+
+  return {
+    labels: baseline.labels,
+    data: baseline.data.map((value, index) => {
+      // Create a pseudo-random but deterministic variation for each data point.
+      // This makes each point's graph unique but stable.
+      const randomizer = Math.sin(seed * 100 + index) * 10000;
+      const variation = (randomizer - Math.floor(randomizer) - 0.5) * 1.5; // Varies between -0.75 and 0.75
+      
+      const newValue = value + variation;
+      return Number(newValue.toFixed(2));
+    })
+  };
+}
+
+function destroyDisplacementChart(canvas) {
+  if (canvas && canvas._displacementChart) {
+    canvas._displacementChart.destroy();
+    delete canvas._displacementChart;
+  }
+}
+
+function renderDisplacementChart(canvas, priority, pointId) {
+  if (!canvas || typeof Chart === 'undefined') return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  destroyDisplacementChart(canvas);
+  const series = getDisplacementSeries(priority, pointId);
+
+  const displacementChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: series.labels,
+      datasets: [
+        {
+          label: 'Displacement (cm)',
+          data: series.data,
+          borderColor: '#ac0d60',
+          backgroundColor: 'rgba(172, 13, 96, 0.15)',
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBackgroundColor: '#ac0d60',
+          pointBorderColor: '#ac0d60',
+          tension: 0.35,
+          fill: 'origin'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: {
+        duration: 1200,
+        easing: 'easeInOutQuart'
+      },
+      animations: {
+        x: {
+          type: 'number',
+          duration: 700,
+          easing: 'easeOutQuart',
+          from: (ctx) => (ctx.type === 'data' && ctx.mode === 'default' ? ctx.chart.scales.x.min ?? 0 : undefined),
+          delay: (ctx) => (ctx.type === 'data' ? ctx.dataIndex * 120 : 0)
+        },
+        y: {
+          type: 'number',
+          duration: 700,
+          easing: 'easeOutQuart',
+          from: (ctx) => {
+            if (ctx.type === 'data' && ctx.mode === 'default') {
+              return ctx.chart.scales.y.min ?? 0;
+            }
+            return undefined;
+          },
+          delay: (ctx) => (ctx.type === 'data' ? ctx.dataIndex * 120 : 0)
+        }
+      },
+      plugins: {
+        legend: {
+          labels: {
+            color: '#f2f2f2'
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#d8d8d8', maxRotation: 45, minRotation: 45 },
+          grid: { color: 'rgba(255, 255, 255, 0.05)' }
+        },
+        y: {
+          ticks: { color: '#d8d8d8' },
+          grid: { color: 'rgba(255, 255, 255, 0.08)' }
+        }
+      }
+    }
+  });
+}
 
 async function fetchPointData(forceRefresh = false) {
     const dataUrl = 'https://schroderhill.github.io/point_data_RFM/points_geojson.geojson';
@@ -301,9 +424,17 @@ map.on('load', async () => {
             customPointsData = JSON.parse(savedData);
         }
 
+    if (!customPointsData?.features?.length) {
+      customPointsData = await fetchPointData(true);
+    }
+
+        // Populate forest filter dropdown
+        populateForestFilter(customPointsData.features);
+
         map.addSource('custom-points', {
             type: 'geojson',
-            data: customPointsData
+      data: customPointsData,
+      promoteId: 'id'
         });
   
         map.addLayer({
@@ -374,6 +505,56 @@ function setFeatureStates(features) {
     });
 }
 
+/********** Forest Filter Dropdown **********/
+function populateForestFilter(features) {
+    const forestCounts = features.reduce((acc, feature) => {
+        const forest = feature.properties.forest;
+        if (forest) {
+            acc[forest] = (acc[forest] || 0) + 1;
+        }
+        return acc;
+    }, {});
+
+    const select = document.getElementById('forest-select');
+    // Clear existing options except the first one
+    while (select.options.length > 1) {
+        select.remove(1);
+    }
+
+    for (const forest in forestCounts) {
+        const option = document.createElement('option');
+        option.value = forest;
+        option.textContent = `${forest} (${forestCounts[forest]})`;
+        select.appendChild(option);
+    }
+}
+
+document.getElementById('forest-select').addEventListener('change', function() {
+    const selectedForest = this.value;
+
+    // Determine which features to include
+    const featuresToBound = (selectedForest === 'all')
+        ? customPointsData.features
+        : customPointsData.features.filter(feature => feature.properties.forest === selectedForest);
+
+    if (featuresToBound.length === 0) {
+        showToast("No points available for this selection.");
+        // Fly to regional view if no points are found for a specific forest
+        map.flyTo({ center: [173.942053519644503, -41.399980118741027], zoom: 4, duration: 2000 });
+        return;
+    }
+
+    // Create a bounds object to include all relevant points
+    const bounds = new mapboxgl.LngLatBounds();
+    featuresToBound.forEach(feature => {
+        bounds.extend(feature.geometry.coordinates);
+    });
+
+    // Animate the map to fit the bounds
+    map.fitBounds(bounds, { padding: 100, duration: 2000, maxZoom: 15 });
+});
+
+
 /********** Dashboard Button Event Listener **********/
 document.getElementById('btn-dashboard').addEventListener('click', () => {
   window.open('rainfullniwa_data.html', '_blank');
@@ -401,16 +582,16 @@ refreshButton.addEventListener('click', async () => {
         if (map.getLayer('points-layer')) {
             map.removeLayer('points-layer');
         }
-        if (map.getSource('custom-points')) {
-            map.removeSource('custom-points');
-        }
+    if (map.getSource('custom-points')) {
+      map.removeSource('custom-points');
+    }
         
         // Add source and layer again
-        map.addSource('custom-points', {
-            type: 'geojson',
-            data: customPointsData,
-            promoteId: 'id' // Ensure 'id' is promoted for feature states
-        });
+    map.addSource('custom-points', {
+      type: 'geojson',
+      data: customPointsData,
+      promoteId: 'id' // Ensure 'id' is promoted for feature states
+    });
 
         map.addLayer({
             id: 'points-layer',
@@ -496,12 +677,61 @@ map.on('click', 'points-layer', (e) => {
                 Archive
             </button>
             <button class="${state.remediated ? 'active' : ''}" data-action="remediate">
-                Remediate
+                Remediated
             </button>
         </div>
         <textarea placeholder="Add notes..." rows="3">${state.notes || ''}</textarea>
+    <div class="graph-section">
+      <button class="graph-toggle-btn">Show Displacement Graph</button>
+      <div class="graph-wrapper">
+        <canvas></canvas>
+      </div>
+    </div>
         <button class="submit-btn">Submit</button>
     `;
+
+  const graphToggleBtn = popupContent.querySelector('.graph-toggle-btn');
+  const graphWrapper = popupContent.querySelector('.graph-wrapper');
+  const graphCanvas = graphWrapper.querySelector('canvas');
+
+  const closeGraph = () => {
+    graphToggleBtn.textContent = 'Show Displacement Graph';
+    graphWrapper.classList.remove('open');
+    destroyDisplacementChart(graphCanvas);
+    graphWrapper.addEventListener('transitionend', () => {
+      graphWrapper.style.display = 'none';
+    }, { once: true });
+  };
+
+  const openGraph = () => {
+    graphWrapper.style.display = 'block';
+    requestAnimationFrame(() => {
+      graphWrapper.classList.add('open');
+      graphToggleBtn.textContent = 'Hide Displacement Graph';
+      requestAnimationFrame(() => {
+        const width = graphWrapper.clientWidth > 0 ? graphWrapper.clientWidth - 4 : 260;
+        graphCanvas.width = width;
+        graphCanvas.height = 220;
+        try {
+          renderDisplacementChart(graphCanvas, priority, id);
+          graphCanvas._displacementChart?.resize();
+        } catch (error) {
+          console.error('Displacement chart error:', error);
+          closeGraph();
+          showToast('Unable to render displacement graph');
+        }
+      });
+    });
+  };
+
+  graphToggleBtn.addEventListener('click', () => {
+    const isOpen = graphWrapper.classList.contains('open');
+    if (isOpen) {
+      closeGraph();
+    } else {
+      openGraph();
+    }
+  });
 
     // Event listeners for toggle buttons
     const buttons = popupContent.querySelectorAll('.toggle-buttons button');
@@ -547,12 +777,19 @@ map.on('click', 'points-layer', (e) => {
     // Create and display popup
     const popup = new mapboxgl.Popup({
         closeButton: true,
-        closeOnClick: false,
+        closeOnClick: true,
         maxWidth: '300px'
     })
     .setLngLat(coordinates)
     .setDOMContent(popupContent)
     .addTo(map);
+
+  popup.on('close', () => {
+    destroyDisplacementChart(graphCanvas);
+    graphWrapper.classList.remove('open');
+    graphWrapper.style.display = 'none';
+    graphToggleBtn.textContent = 'Show Displacement Graph';
+  });
 });
 
 // Add hover effect on points
@@ -601,4 +838,120 @@ map.on('click', (e) => {
     </svg>`;
   showToast(`Point ${newId} added`);
 });
+
+function showDisplacementGraph(pointData) {
+  const modal = document.getElementById('displacement-modal');
+  const chartContainer = document.getElementById('displacement-chart-container');
+  
+  // Clear previous chart if it exists
+  if (displacementChart) {
+    displacementChart.destroy();
+  }
+
+  // Create some sample displacement data
+  const labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct'];
+  
+  // Add slight random variation to each point's graph
+  const baseDisplacement = Array.from({length: 10}, (_, i) => (i + 1) * 0.8);
+  const displacementData = baseDisplacement.map(d => {
+    const variation = (Math.random() - 0.5) * 2; // -1 to 1
+    let value = d + variation;
+    return Math.min(value, 12); // Cap at 12cm
+  });
+
+  // Flatten the curve for some points
+  if (Math.random() < 0.2) { // 20% chance to flatten
+    const lastValue = displacementData[displacementData.length - 2];
+    displacementData[displacementData.length - 1] = lastValue + (Math.random() - 0.5) * 0.2;
+  }
+
+  const ctx = document.getElementById('displacement-chart').getContext('2d');
+  displacementChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Displacement (cm)',
+        data: displacementData,
+        borderColor: '#007bff',
+        backgroundColor: 'rgba(0, 123, 255, 0.5)',
+        fill: true,
+        tension: 0.4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'Displacement (cm)',
+            color: 'white'
+          },
+          grid: {
+            color: 'rgba(255, 255, 255, 0.1)'
+          },
+          ticks: {
+            color: 'white'
+          }
+        },
+        x: {
+          title: {
+            display: true,
+            text: 'Time',
+            color: 'white'
+          },
+          grid: {
+            color: '#007bff' // Match line color
+          },
+          ticks: {
+            color: 'white'
+          }
+        }
+      },
+      plugins: {
+        legend: {
+          labels: {
+            color: '#f2f2f2'
+          }
+        }
+      },
+      animation: {
+        duration: 1200,
+        easing: 'easeInOutQuart'
+      }
+    }
+  });
+
+  modal.style.display = 'block';
+  // Close the modal when clicking outside of it
+  window.onclick = function(event) {
+    if (event.target === modal) {
+      modal.style.display = 'none';
+      destroyDisplacementChart(ctx.canvas);
+    }
+  };
+}
+
+// Get the modal
+var modal = document.getElementById("displacement-modal");
+
+// Get the <span> element that closes the modal
+var span = document.getElementsByClassName("close")[0];
+
+// When the user clicks on <span> (x), close the modal
+span.onclick = function() {
+  modal.style.display = "none";
+}
+
+// When the user presses a key, close the modal if it's open
+window.onkeydown = function(event) {
+  if (event.key === "Escape" && modal.style.display === "block") {
+    modal.style.display = "none";
+    const ctx = document.getElementById('displacement-chart').getContext('2d');
+    destroyDisplacementChart(ctx.canvas);
+  }
+};
 

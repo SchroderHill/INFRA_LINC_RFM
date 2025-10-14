@@ -8,12 +8,20 @@
   <link href="https://api.mapbox.com/mapbox-gl-js/v3.9.3/mapbox-gl.css" rel="stylesheet">
   <script src="https://api.mapbox.com/mapbox-gl-js/v3.9.3/mapbox-gl.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
   
   <!-- Link to your external CSS -->
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="map"></div>
+
+  <!-- Top Left Dropdown for Forest Selection -->
+  <div class="top-left-dropdown">
+    <select id="forest-select">
+      <option value="all">All Forests</option>
+    </select>
+  </div>
   
   <!-- Top Center Dropdown for "Mark all" -->
   <div class="top-center-dropdown">
