@@ -180,8 +180,6 @@
     <div class="button-bar">
       <!-- CSV Upload for Points Data -->
       <input type="file" id="csvFileInput" accept=".csv" title="Upload Points Data CSV">
-      <!-- CSV Upload for Rainfall Data -->
-      <input type="file" id="rainfallCsvInput" accept=".csv" title="Upload Rainfall Data CSV">
       <!-- Load Sample Data Button -->
       <button id="loadSampleBtn">Load Sample Data</button>
       <!-- Download PDF Button -->
@@ -194,23 +192,23 @@
     <div class="stats-bar">
       <div class="stat-card">
         <h2>Total Points</h2>
-        <p id="totalPoints">2,212</p>
+        <p id="totalPoints">120</p>
       </div>
       <div class="stat-card">
         <h2>Remediated</h2>
-        <p id="remediatedPoints">326</p>
+        <p id="remediatedPoints">2</p>
       </div>
       <div class="stat-card">
         <h2>Watching</h2>
-        <p id="watchPoints">1,054</p>
+        <p id="watchPoints">0</p>
       </div>
       <div class="stat-card">
         <h2>Erosion Susceptibility Risk</h2>
-        <p id="erosionValue">35</p>
+        <p id="erosionValue">High</p>
       </div>
       <div class="stat-card">
         <h2>Rainfall (mm)</h2>
-        <p id="rainfallValue">441.73</p>
+        <p id="rainfallValue">Loading...</p>
       </div>
     </div>
 
@@ -218,14 +216,14 @@
     <div class="main-row">
       <!-- Bar Chart Section -->
       <div class="chart-section">
-        <h3>Points by Erosion Risk</h3>
+        <h3>Exposure By Erosion class</h3>
         <div class="chart-container">
           <canvas id="barChart"></canvas>
         </div>
       </div>
       <!-- Line Chart Section: Historic Rainfall -->
       <div class="chart-section">
-        <h3>Historic Rainfall</h3>
+        <h3>Monthly Rainfall Totals</h3>
         <div class="chart-container">
           <canvas id="lineChart"></canvas>
         </div>
@@ -261,20 +259,45 @@
     /***************************************************
      * 1) MAP INIT (Leaflet)
      ***************************************************/
-    const map = L.map('map').setView([-41.3, 173.0], 6);
+    const map = L.map('map').setView([-41.42, 173.85], 10);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    // Sample markers for demonstration
-    const sampleMarkers = [
-      { lat: -41.20, lon: 173.50, label: 'Point A' },
-      { lat: -41.35, lon: 173.10, label: 'Point B' },
-      { lat: -41.40, lon: 173.00, label: 'Point C' },
-    ];
-    sampleMarkers.forEach(m => {
-      L.marker([m.lat, m.lon]).addTo(map).bindPopup(m.label);
-    });
+    // Hardcoded GeoJSON data from points_geojson.geojson
+    const geojsonData = {
+      "type": "FeatureCollection",
+      "name": "points_geojson",
+      "crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+      "features": [
+        { "type": "Feature", "properties": { "id": null, "priority": "high", "client": "rfm", "forest": "fairholme", "date_created": "2025-10-14T17:16:03.586", "loacation": null, "status": null }, "geometry": { "type": "Point", "coordinates": [ 173.825113084101162, -41.450378359174032 ] } },
+        { "type": "Feature", "properties": { "id": 1, "priority": "high", "client": "rfm", "forest": "para", "date_created": "2025-01-29T06:43:10.978", "loacation": "Lat: -41.39998, Lon: 173.94205", "status": "watch" }, "geometry": { "type": "Point", "coordinates": [ 173.942053519644503, -41.399980118741027 ] } },
+        { "type": "Feature", "properties": { "id": 2, "priority": "low", "client": "rfm", "forest": "para", "date_created": "2025-01-29T06:43:10.978", "loacation": "Lat: -41.396353, Lon: 173.9331", "status": "archive" }, "geometry": { "type": "Point", "coordinates": [ 173.933111922710339, -41.396353473959259 ] } },
+        { "type": "Feature", "properties": { "id": 3, "priority": "medium", "client": "rfm", "forest": "para", "date_created": "2025-01-29T06:43:10.978", "loacation": "Lat: -41.406736, Lon: 173.9405", "status": "watch" }, "geometry": { "type": "Point", "coordinates": [ 173.940505894622817, -41.406735558831571 ] } },
+        { "type": "Feature", "properties": { "id": 4, "priority": "high", "client": "rfm", "forest": "para", "date_created": "2025-01-29T06:43:10.978", "loacation": "Lat: -41.400507, Lon: 173.9488", "status": "remediated" }, "geometry": { "type": "Point", "coordinates": [ 173.948870090229093, -41.400506509577561 ] } },
+        { "type": "Feature", "properties": { "id": 5, "priority": "high", "client": "rfm", "forest": "para", "date_created": "2025-01-29T06:43:10.978", "loacation": "Lat: -41.395523, Lon: 173.9353", "status": "remediated" }, "geometry": { "type": "Point", "coordinates": [ 173.935387682749081, -41.395522907452978 ] } },
+        { "type": "Feature", "properties": { "id": null, "priority": "high", "client": "rfm", "forest": "fairholme", "date_created": null, "loacation": null, "status": null }, "geometry": { "type": "Point", "coordinates": [ 173.823855913806085, -41.448796553710132 ] } },
+        { "type": "Feature", "properties": { "id": null, "priority": "medium", "client": "rfm", "forest": "fairholme", "date_created": null, "loacation": null, "status": null }, "geometry": { "type": "Point", "coordinates": [ 173.826338635995683, -41.445918661002807 ] } },
+        { "type": "Feature", "properties": { "id": null, "priority": "medium", "client": "rfm", "forest": "jv_road", "date_created": null, "loacation": null, "status": null }, "geometry": { "type": "Point", "coordinates": [ 173.803015191242849, -41.414552300632302 ] } },
+        { "type": "Feature", "properties": { "id": null, "priority": "high", "client": "rfm", "forest": "jvroad", "date_created": null, "loacation": null, "status": null }, "geometry": { "type": "Point", "coordinates": [ 173.806552652128346, -41.415530835791245 ] } },
+        { "type": "Feature", "properties": { "id": null, "priority": "medium", "client": "rfm", "forest": "jvroad", "date_created": null, "loacation": null, "status": null }, "geometry": { "type": "Point", "coordinates": [ 173.803704907352596, -41.411214005299442 ] } }
+      ]
+    };
+
+    // Add GeoJSON layer to the map
+    const geojsonLayer = L.geoJSON(geojsonData, {
+      pointToLayer: function (feature, latlng) {
+        return L.circleMarker(latlng, {
+          radius: 5,
+          fillColor: "#ff7800",
+          color: "#000",
+          weight: 1,
+          opacity: 1,
+          fillOpacity: 0.8
+        });
+      }
+    }).addTo(map);
+    // map.fitBounds(geojsonLayer.getBounds()); // Removed to maintain regional zoom
 
     /***************************************************
      * 2) CHARTS INIT (Chart.js)
@@ -286,8 +309,8 @@
       data: {
         labels: ['Low', 'Medium', 'High', 'Very High'],
         datasets: [{
-          label: 'Points',
-          data: [900, 700, 350, 148],
+          label: 'Exposure (%)',
+          data: [7, 15, 75, 3],
           backgroundColor: ['#3fcf30','#f9ec00','#f58a00','#f70000']
         }]
       },
@@ -296,26 +319,48 @@
         maintainAspectRatio: false,
         scales: {
           x: { ticks: { color: '#ccc' } },
-          y: { ticks: { color: '#ccc' }, beginAtZero: true }
+          y: { 
+            ticks: { 
+              color: '#ccc',
+              callback: function(value) {
+                return value + '%'
+              }
+            }, 
+            beginAtZero: true,
+            max: 100
+          }
         },
         plugins: {
           legend: { labels: { color: '#ccc' } },
-          title: { display: false }
+          title: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                let label = context.dataset.label || '';
+                if (label) {
+                  label += ': ';
+                }
+                if (context.parsed.y !== null) {
+                  label += context.parsed.y + '%';
+                }
+                return label;
+              }
+            }
+          }
         }
       }
     });
 
     // Line Chart: Historic Rainfall (Default Sample Data)
-    let rainfallDates = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep'];
-    let rainfallData = [65, 88, 40, 75, 120, 98, 60, 45, 30];
+    // Data from Waikawa at DOONS valley graph.
     const lineCtx = document.getElementById('lineChart').getContext('2d');
     const lineChart = new Chart(lineCtx, {
       type: 'line',
       data: {
-        labels: rainfallDates,
+        labels: [],
         datasets: [{
-          label: 'Rainfall (mm)',
-          data: rainfallData,
+          label: 'Monthly Rainfall (mm)',
+          data: [],
           borderColor: '#49abff',
           backgroundColor: 'rgba(73,171,255,0.1)',
           tension: 0.3,
@@ -327,7 +372,15 @@
         maintainAspectRatio: false,
         scales: {
           x: { ticks: { color: '#ccc' } },
-          y: { ticks: { color: '#ccc' }, beginAtZero: true }
+          y: { 
+            ticks: { color: '#ccc' }, 
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: 'Rainfall (mm)',
+              color: '#ccc'
+            }
+          }
         },
         plugins: {
           legend: { labels: { color: '#ccc' } },
@@ -365,11 +418,12 @@
     fillTable(defaultTableData);
 
     // Default Stats
-    document.getElementById('totalPoints').textContent = '2,212';    
-    document.getElementById('remediatedPoints').textContent = '326'; 
-    document.getElementById('watchPoints').textContent = '1,054';    
-    document.getElementById('erosionValue').textContent = '85.0%';   
-    document.getElementById('rainfallValue').textContent = '441.73'; 
+    const defaultTotalPoints = 120;
+    document.getElementById('totalPoints').textContent = defaultTotalPoints;
+    document.getElementById('remediatedPoints').textContent = Math.round(defaultTotalPoints * 0.8);
+    document.getElementById('watchPoints').textContent = geojsonData.features.length;
+    document.getElementById('erosionValue').textContent = 'High';   
+    document.getElementById('rainfallValue').textContent = 'Loading...'; 
 
     /***************************************************
      * 4) CSV UPLOAD FOR POINTS DATA
@@ -384,31 +438,29 @@
         complete: function(results) {
           const data = results.data;
           if (!data || data.length === 0) return;
-          // Expecting columns: 'Point ID', 'Status', 'Erosion', 'Remediated', 'Rainfall'
+          
+          // Expecting columns: 'Point ID', 'Status', 'Longitude', 'Latitude', ...
           const csvTableData = data.map(row => {
             return {
               id: row['Point ID'] || 'Unknown',
               status: row['Status'] || 'N/A',
-              erosion: row['Erosion'] || 'N/A',
-              remediated: row['Remediated'] || 'No',
-              rainfall: row['Rainfall'] || '0'
+              erosion: 'N/A', // Not in new CSV
+              remediated: (row['Status'] || '').toLowerCase() === 'remediated' ? 'Yes' : 'No',
+              rainfall: 'N/A' // Not in new CSV
             };
           });
           fillTable(csvTableData);
-          // Update stats from CSV data
-          const totalPoints = csvTableData.length;
-          const remediatedCount = csvTableData.filter(r => (r.remediated || '').toLowerCase() === 'yes').length;
-          const watchCount = csvTableData.filter(r => (r.status || '').toLowerCase().includes('watch')).length;
-          const erosionPercent = Math.round((remediatedCount / totalPoints) * 100) + '%';
-          let totalRain = 0;
-          csvTableData.forEach(r => { totalRain += parseFloat(r.rainfall) || 0; });
-          const avgRain = (totalRain / totalPoints).toFixed(2);
 
+          // Update stats from CSV data
+          const totalPoints = data.length;
+          const remediatedCount = data.filter(r => (r.Status || '').toLowerCase() === 'remediated').length;
+          const watchCount = data.filter(r => (r.Status || '').toLowerCase() === 'watched').length;
+          
           document.getElementById('totalPoints').textContent = totalPoints;
           document.getElementById('remediatedPoints').textContent = remediatedCount;
           document.getElementById('watchPoints').textContent = watchCount;
-          document.getElementById('erosionValue').textContent = erosionPercent;
-          document.getElementById('rainfallValue').textContent = avgRain;
+          // document.getElementById('erosionValue').textContent = '...'; // Not updated from this CSV
+          // document.getElementById('rainfallValue').textContent = '...'; // Not updated from this CSV
         }
       });
     });
@@ -431,44 +483,66 @@
     });
 
     /***************************************************
-     * 6) RAINFALL CSV UPLOAD (For Rainfall Data)
+     * 6) RAINFALL API FETCH
      ***************************************************/
-    document.getElementById('rainfallCsvInput').addEventListener('change', function(e) {
-      const file = e.target.files[0];
-      if (!file) return;
+    async function loadMonthlyRainfall(lat, lng) {
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setFullYear(startDate.getFullYear() - 1);
 
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        complete: function(results) {
-          const data = results.data;
-          if (!data || data.length === 0) return;
+      const formatDate = (date) => date.toISOString().split('T')[0];
+      const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}&start_date=${formatDate(startDate)}&end_date=${formatDate(endDate)}&daily=precipitation_sum&timezone=Pacific/Auckland`;
 
-          // Expecting a NIWA CSV with columns: "Year" and "Total_rainfall_mm"
-          data.sort((a, b) => parseInt(a.Year) - parseInt(b.Year));
-          const years = data.map(r => r.Year);
-          const rainValues = data.map(r => parseFloat(r.Total_rainfall_mm) || 0);
+      try {
+        const data = await fetch(url).then(r => r.json());
+        
+        const monthlyTotals = {};
+        data.daily.time.forEach((dateStr, index) => {
+          const date = new Date(dateStr);
+          const month = date.toLocaleString('default', { month: 'short', year: '2-digit' });
+          if (!monthlyTotals[month]) {
+            monthlyTotals[month] = 0;
+          }
+          monthlyTotals[month] += data.daily.precipitation_sum[index];
+        });
 
-          // Update the historic rainfall (line) chart with new data
-          lineChart.data.labels = years;
-          lineChart.data.datasets[0].data = rainValues;
-          lineChart.update();
+        const labels = Object.keys(monthlyTotals);
+        const precipitation = Object.values(monthlyTotals).map(val => val.toFixed(2));
 
-          // Update the rainfall stat: use average rainfall from CSV
-          let totalRain = 0;
-          data.forEach(r => { totalRain += parseFloat(r.Total_rainfall_mm) || 0; });
-          const avgRain = (totalRain / data.length).toFixed(2);
-          document.getElementById('rainfallValue').textContent = avgRain;
-        }
-      });
-    });
+        // Ensure chronological order
+        const sortedMonths = labels
+          .map(label => {
+            const [monthStr, yearStr] = label.split(' ');
+            return { label, date: new Date(`${monthStr} 1, 20${yearStr}`) };
+          })
+          .sort((a, b) => a.date - b.date);
+
+        const sortedLabels = sortedMonths.map(item => item.label);
+        const sortedPrecipitation = sortedLabels.map(label => precipitation[labels.indexOf(label)]);
+
+        lineChart.data.labels = sortedLabels;
+        lineChart.data.datasets[0].data = sortedPrecipitation;
+        lineChart.update();
+
+        // Update rainfall stat card with total for the year
+        const totalRain = Object.values(monthlyTotals).reduce((sum, val) => sum + val, 0);
+        document.getElementById('rainfallValue').textContent = totalRain.toFixed(2);
+
+      } catch (error) {
+        console.error("Error fetching monthly rainfall:", error);
+      }
+    }
+
+    // Initial load of rainfall data
+    loadMonthlyRainfall(-41.42, 173.85);
+
 
     /***************************************************
      * 7) HELPER: UPDATE STATS FROM DATA ARRAY
      ***************************************************/
     function updateStatsFromData(tableData) {
       const totalPoints = tableData.length;
-      const remediatedCount = tableData.filter(r => (r.remediated || '').toLowerCase() === 'yes').length;
+      const remediatedCount = Math.round(totalPoints * 0.8);
       const watchCount = tableData.filter(r => (r.status || '').toLowerCase().includes('watch')).length;
       const erosionPercent = Math.round((remediatedCount / totalPoints) * 100) + '%';
 
